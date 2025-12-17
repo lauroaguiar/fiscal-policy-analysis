@@ -1,6 +1,6 @@
-# 📊IBMACRO | Macroeconomic Outlook 2025.1: Fiscal Section
+# 📊 Macroeconomic Outlook 2025.1: Fiscal Section
 
-> **Official repository for the fiscal analysis developed for the Macroeconomic Outlook report.**
+> **Official repository for the fiscal analysis developed for the Macroeconomic Outlook report by the IbMacro student-led league.**
 
 [![R](https://img.shields.io/badge/Made_with-R-blue?style=for-the-badge&logo=R)](https://www.r-project.org/)
 [![Data Source](https://img.shields.io/badge/Data-IMF%20%26%20World%20Bank-orange?style=for-the-badge)](https://www.imf.org/en/Data)
@@ -69,3 +69,6 @@ fetch_indicator <- function(indicator_id) {
   # ... (JSON processing and cleaning) ...
   return(data_indicator)
 }
+```
+--- 
+This is an academic and educational project developed under IbMacro.
