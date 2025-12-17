@@ -1,92 +1,71 @@
-# 📊 Conjuntura Macroeconômica 2025.1: Seção Fiscal
+# 📊 Macroeconomic Outlook 2025.1: Fiscal Section
 
-> **Repositório oficial da análise fiscal desenvolvida para o relatório de Conjuntura Macroeconômica.**
+> **Official repository for the fiscal analysis developed for the Macroeconomic Outlook report.**
 
 [![R](https://img.shields.io/badge/Made_with-R-blue?style=for-the-badge&logo=R)](https://www.r-project.org/)
 [![Data Source](https://img.shields.io/badge/Data-IMF%20%26%20World%20Bank-orange?style=for-the-badge)](https://www.imf.org/en/Data)
-[![Status](https://img.shields.io/badge/Status-Concluído-success?style=for-the-badge)]()
+[![Status](https://img.shields.io/badge/Status-Completed-success?style=for-the-badge)]()
 
-## 👥 Autores
+## 👥 Authors
 * **João Abdo**
 * **João Moreno**
 * **Lauro Aguiar**
 
 ---
 
-## 🎯 Objetivo do Projeto
+## 🎯 Project Objective
 
-Este projeto tem como foco a análise da **sustentabilidade fiscal** e da **eficiência do gasto público** no Brasil, comparando-o com pares regionais (América Latina) e blocos econômicos (BRICS e Países Desenvolvidos). 
+This project focuses on analyzing **fiscal sustainability** and **public spending efficiency** in Brazil, comparing it with regional peers (Latin America) and economic blocs (BRICS and Developed Countries). 
 
-A análise foge do lugar comum ao não olhar apenas para o *quanto* se gasta, mas para a *qualidade* desse gasto, construindo indicadores próprios a partir de microdados.
-
----
-
-## 🛠 Metodologia e Abordagem Técnica
-
-A seção fiscal foi construída utilizando uma abordagem orientada a dados (*data-driven*), automatizando a coleta e o tratamento de grandes bases de dados internacionais.
-
-### 1. Coleta Automatizada de Dados (APIs)
-Em vez de baixar planilhas estáticas, desenvolvemos scripts em **R** para conectar diretamente às APIs de instituições multilaterais (Os dados do WBStats e GMD não foram utilizados na análise de conjuntura, mas sim os gráficos feitos pelo Itáu).
-* **FMI (IMF DataMapper API):** Para dados macrofiscais (Dívida Bruta, Resultado Primário, Receitas e Despesas) de países da América Latina (`BRA`, `ARG`, `CHL`, `COL`, `PRY`, `PER`, `MEX`, `URY`).
-* **Banco Mundial (WBStats):** Para indicadores socioeconômicos utilizados no cálculo de eficiência.
-* **Global Macro Database (GMD):** Para séries históricas longas e comparações estruturais.
-
-### 2. Índice de Eficiência do Gasto Público (Custom Index)
-Um dos diferenciais deste trabalho foi a criação de um **Índice de Qualidade dos Bens Públicos**. Utilizamos a biblioteca `wbstats` para agregar indicadores em 5 dimensões:
-
-* 📚 **Educação:** Alfabetização, PISA e conclusão do ensino secundário.
-* 🏥 **Saúde:** Expectativa de vida e mortalidade neonatal.
-* ⚖️ **Administração:** Controle de corrupção, qualidade judicial e burocracia.
-* 🤝 **Equidade:** Participação na renda dos 40% mais pobres.
-* ⚡ **Infraestrutura:** Acesso à eletricidade e segurança pública.
-
-> **Fórmula da Eficiência:**
-> $$ \text{Eficiência} = \frac{\text{Índice de Qualidade dos Bens Públicos}}{\text{Gasto Público (% PIB)}} $$
+The analysis goes beyond conventional metrics by examining not only *how much* is spent, but the *quality* of that spending, developing proprietary indicators based on microdata.
 
 ---
 
-## 📈 Principais Resultados (Highlights)
+## 🛠 Methodology and Technical Approach
 
-O código gera visualizações que respondem às seguintes perguntas:
-1.  **Sustentabilidade:** A trajetória da Dívida Bruta do Brasil é explosiva comparada aos pares da LATAM?
-2.  **Resultado Fiscal:** Como o *Net Lending/Borrowing* do Brasil se comporta frente à volatilidade regional?
-3.  **Custo-Benefício:** O Brasil gasta muito? E esse gasto se traduz em bens públicos de qualidade comparável aos países da OCDE ou BRICS?
+The fiscal section was built using a **data-driven** approach, automating the collection and processing of large international datasets.
+
+### 1. Automated Data Collection (APIs)
+Instead of downloading static spreadsheets, we developed **R** scripts to connect directly to the APIs of multilateral institutions:
+* **IMF (IMF DataMapper API):** For macro-fiscal data (Gross Debt, Primary Balance, Revenues, and Expenditures) for Latin American countries (`BRA`, `ARG`, `CHL`, `COL`, `PRY`, `PER`, `MEX`, `URY`).
+* **World Bank (WBStats):** For socioeconomic indicators used in efficiency calculations.
+* **Global Macro Database (GMD):** For long historical series and structural comparisons.
+
+### 2. Public Spending Efficiency Index (Custom Index)
+A key differentiator of this work was the creation of a **Quality of Public Goods Index**. We used the `wbstats` library to aggregate indicators across 5 dimensions:
+
+* 📚 **Education:** Literacy rates, PISA scores, and secondary education completion.
+* 🏥 **Health:** Life expectancy and neonatal mortality.
+* ⚖️ **Administration:** Corruption control, judicial quality, and bureaucracy.
+* 🤝 **Equity:** Income share of the bottom 40%.
+* ⚡ **Infrastructure:** Access to electricity and public safety.
+
+> **Efficiency Formula:**
+> 
+> $$\text{Efficiency} = \frac{\text{Public Goods Quality Index}}{\text{Public Spending (\% of GDP)}}$$
 
 ---
 
-## 💻 Estrutura do Código
+## 📈 Key Findings (Highlights)
 
-Abaixo, um exemplo simplificado de como estruturamos a extração de dados do FMI para garantir reprodutibilidade:
+The code generates visualizations that address the following questions:
+1. **Sustainability:** Is Brazil's Gross Debt trajectory explosive compared to its LATAM peers?
+2. **Fiscal Result:** How does Brazil’s *Net Lending/Borrowing* behave amidst regional volatility?
+3. **Cost-Benefit:** Does Brazil overspend? Does this spending translate into public goods of comparable quality to OECD or BRICS countries?
+
+---
+
+## 💻 Code Structure
+
+Below is a simplified example of how we structured the IMF data extraction to ensure reproducibility:
 
 ```r
-# Exemplo de extração via API do FMI utilizada no projeto
+# Example of IMF API extraction used in the project
 fetch_indicator <- function(indicator_id) {
   base_url <- "[https://www.imf.org/external/datamapper/api/v1](https://www.imf.org/external/datamapper/api/v1)"
-  url <- sprintf("%s/%s/%s?periods=%s", base_url, indicator_id, paste(paises, collapse = "/"), periods_param)
+  url <- sprintf("%s/%s/%s?periods=%s", base_url, indicator_id, paste(countries, collapse = "/"), periods_param)
   
   resp <- GET(url)
-  # ... (Processamento e limpeza do JSON) ...
+  # ... (JSON processing and cleaning) ...
   return(data_indicator)
 }
-```
-
-## 📦 Pacotes Utilizados
-
-A análise depende de um conjunto robusto de bibliotecas do R:
-
-* **Manipulação de Dados:** `tidyverse`, `dplyr`, `janitor`, `lubridate`
-* **Econometria e Séries Temporais:** `urca`, `vars`, `forecast`, `tseries`, `mFilter`
-* **Dados Financeiros/Macro:** `GetBCBData`, `wbstats`, `globalmacrodata`, `imf.data`
-* **Visualização:** `ggplot2`, `plotly`, `gridExtra`, `scales`
-
----
-
-## 🚀 Como Executar
-
-1.  Clone este repositório.
-2.  Abra o arquivo principal do projeto no RStudio.
-3.  Certifique-se de que todas as dependências estão instaladas (o script possui uma função `install_if_missing` automática).
-4.  Execute os chunks para baixar os dados mais recentes e gerar os gráficos.
-
----
-*Este projeto é de cunho acadêmico e educacional, desenvolvido no âmbito do [IbMacro]([url](https://br.linkedin.com/company/ibmacro)).*
