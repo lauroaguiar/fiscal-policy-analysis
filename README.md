@@ -89,4 +89,4 @@ A análise depende de um conjunto robusto de bibliotecas do R:
 4.  Execute os chunks para baixar os dados mais recentes e gerar os gráficos.
 
 ---
-*Este projeto é de cunho acadêmico e educacional, desenvolvido no âmbito do [IbMacro]([url](https://br.linkedin.com/company/ibmacro))..*
+*Este projeto é de cunho acadêmico e educacional, desenvolvido no âmbito do [IbMacro]([url](https://br.linkedin.com/company/ibmacro)).*
