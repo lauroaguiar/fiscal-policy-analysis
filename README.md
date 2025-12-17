@@ -1,4 +1,4 @@
-# 📊 Macroeconomic Outlook 2025.1: Fiscal Section
+# 📊IBMACRO | Macroeconomic Outlook 2025.1: Fiscal Section
 
 > **Official repository for the fiscal analysis developed for the Macroeconomic Outlook report.**
 
