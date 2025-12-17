@@ -6,11 +6,6 @@
 [![Data Source](https://img.shields.io/badge/Data-IMF%20%26%20World%20Bank-orange?style=for-the-badge)](https://www.imf.org/en/Data)
 [![Status](https://img.shields.io/badge/Status-Completed-success?style=for-the-badge)]()
 
-## 👥 Authors
-* **João Abdo**
-* **João Moreno**
-* **Lauro Aguiar**
-
 ---
 
 ## 🎯 Project Objective
@@ -70,5 +65,11 @@ fetch_indicator <- function(indicator_id) {
   return(data_indicator)
 }
 ```
---- 
+---
+
+## 👥 Authors
+* **João Abdo**
+* **João Moreno**
+* **Lauro Aguiar**
+
 This is an academic and educational project developed under IbMacro.
