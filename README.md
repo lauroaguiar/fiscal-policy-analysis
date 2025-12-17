@@ -42,7 +42,7 @@ A key differentiator of this work was the creation of a **Quality of Public Good
 
 > **Efficiency Formula:**
 > 
-> $$\text{Efficiency} = \frac{\text{Public Goods Quality Index}}{\text{Public Spending (\% of GDP)}}$$
+> $$\text{Efficiency} = \frac{\text{Public Goods Quality Index}}{\text{Public Spending \% of GDP)}}$$
 
 ---
 
