@@ -1,7 +1,3 @@
----
-output: github_document
----
-
 # 📊 Conjuntura Macroeconômica 2025.1: Seção Fiscal
 
 > **Repositório oficial da análise fiscal desenvolvida para o relatório de Conjuntura Macroeconômica.**
@@ -93,4 +89,4 @@ A análise depende de um conjunto robusto de bibliotecas do R:
 4.  Execute os chunks para baixar os dados mais recentes e gerar os gráficos.
 
 ---
-*Este projeto foi desenvolvido como parte da disciplina de Conjuntura Econômica, com foco acadêmico e analítico.*
+*Este projeto é de cunho acadêmico e educacional, desenvolvido no âmbito do [IbMacro]([url](https://br.linkedin.com/company/ibmacro))..*
