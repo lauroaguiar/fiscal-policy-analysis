@@ -1,0 +1,891 @@
+---
+title: "QMDFiscal"
+author: "João Abdo, João Moreno, Lauro Aguiar"
+format: html
+editor: visual
+---
+
+# Packages
+
+```{r}
+# Criação do vetor com todas as bibliotecas
+pkg <- c(
+  "scales",
+  "gridExtra",
+  "grid",
+  "png",
+  "xtable",
+  "sidrar",
+  "readxl",
+  "rbcb",
+  "BETS",
+  "tidyverse",
+  "magrittr",
+  "zoo",
+  "janitor",
+  "lubridate",
+  "knitr",
+  "GetBCBData",
+  "timetk",
+  "kableExtra",
+  "dplyr",
+  "tseries",
+  "vars",
+  "ggplot2",
+  "lmtest",
+  "tibble",
+  "tsibble",
+  "urca",
+  "forecast",
+  "reshape2",
+  "deflateBR",
+  "seasonal",
+  "RcppRoll",
+  "feasts",
+  "httr",
+  "openxlsx",
+  "gdata",
+  "rio",
+  "mFilter",
+  "patchwork",
+  "writexl",
+  "xts",
+  "forecast",
+  "purr",
+  "fUnitRoots",
+  "foreach",
+  "parallel",
+  "doSNOW",
+  "imf.data"
+)
+
+devtools::install_github('msperlin/GetTDData',force = TRUE)
+devtools::install_github("KMueller-Lab/Global-Macro-Database-R")
+
+# Função para instalar os pacotes que não estão instalados
+install_if_missing <- function(pkg) {
+  new_pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new_pkg)) install.packages(new_pkg)
+}
+
+# Instalar pacotes faltantes
+install_if_missing(pkg)
+
+# Carregar todos os pacotes
+lapply(pkg, library, character.only = TRUE)
+```
+
+# Emerging Countries Data
+
+```{r}
+# Pacotes necessários
+# Se ainda não estiverem instalados, descomente a linha abaixo:
+# install.packages(c("httr","jsonlite","dplyr","purrr","tidyr"))
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(purrr)
+library(tidyr)
+
+# 1) Defina os países e os indicadores
+paises <- c("BRA","ARG", "CHL", "COL", "PRY", "PER", "MEX", "URY")
+indicadores <- c(
+  GGXWDG_NGDP    = "GGXWDG_NGDP",    # dívida bruta do governo (% do PIB)
+  GGXCNL_NGDP    = "GGXCNL_NGDP",    # empréstimos líquidos (% do PIB)
+  GGR_G01_GDP_PT = "GGR_G01_GDP_PT", # receita (% do PIB)
+  G_X_G01_GDP_PT = "G_X_G01_GDP_PT"  # despesa (% do PIB)
+)
+
+# 2) Defina o período desejado
+anos_desejados <- 2015:2024
+periods_param <- paste(anos_desejados, collapse = ",")
+
+# 3) Função para buscar um indicador para todos os países 
+fetch_indicator <- function(indicator_id) {
+  base_url <- "https://www.imf.org/external/datamapper/api/v1"
+  # Constrói a URL com o indicador, lista de países (separados por "/") e os períodos desejados
+  url <- sprintf(
+    "%s/%s/%s?periods=%s",
+    base_url,
+    indicator_id,
+    paste(paises, collapse = "/"),
+    periods_param
+  )
+  
+  # Realiza a requisição GET à API
+  resp <- GET(url)
+  stop_for_status(resp)
+  
+  # Faz o parsing do JSON usando flatten=TRUE para facilitar a navegação
+  j0 <- fromJSON(content(resp, "text", encoding = "UTF-8"), flatten = TRUE)
+  
+  # Verifica se a chave 'values' está presente
+  if (!"values" %in% names(j0)) {
+    stop("A resposta do JSON não possui a chave 'values'. Verifique a URL e o formato do JSON.")
+  }
+  
+  # Acessa os dados referentes ao indicador solicitado
+  vals <- j0$values[[indicator_id]]
+  if (is.null(vals)) {
+    stop(sprintf("Não foram encontrados dados para o indicador '%s'.", indicator_id))
+  }
+  
+  # Percorre cada país e gera um tibble com os anos e valores
+  data_indicator <- map_dfr(names(vals), function(country_code) {
+    entry <- vals[[country_code]]
+    # Dependendo do retorno da API, os dados podem estar encapsulados em "data"
+    d <- if ("data" %in% names(entry)) entry$data else entry
+    if (is.null(d) || length(d) == 0) {
+      return(tibble(country = country_code, year = NA_integer_, value = NA_real_))
+    }
+    tibble(
+      country = country_code,
+      year    = as.integer(names(d)),
+      value   = as.numeric(unlist(d))
+    )
+  }) %>%
+    mutate(indicator = indicator_id)
+  
+  return(data_indicator)
+}
+
+# 4) Testa a função para um indicador (descomente se quiser depurar)
+# test_data <- fetch_indicator("GGXWDG_NGDP")
+# print(test_data)
+
+# 5) Loop sobre os indicadores e junção dos dados
+lista <- map(indicadores, fetch_indicator)
+
+# Cria o dataframe longo com todos os indicadores
+df_fiscal_long <- bind_rows(lista)
+
+# Converte o dataframe de formato longo para formato largo
+df_fiscal <- df_fiscal_long %>%
+  pivot_wider(
+    id_cols    = c(country, year),
+    names_from = indicator,
+    values_from = value,
+    values_fill = NA_real_
+  ) %>%
+  arrange(country, year)
+
+# Renomeia as colunas para nomes mais intuitivos
+df_fiscal <- df_fiscal %>%
+  rename(
+    `General government gross debt`        = GGXWDG_NGDP,
+    `General government net lending/borrowing` = GGXCNL_NGDP,
+    Revenue                                  = GGR_G01_GDP_PT,
+    Expenditure                              = G_X_G01_GDP_PT
+  )
+
+# Exibe o dataframe completo
+print(df_fiscal)
+
+# 6) Filtra o dataframe para mostrar o último ano disponível para cada país
+df_last_year <- df_fiscal %>%
+  group_by(country) %>%
+  filter(year == max(year, na.rm = TRUE)) %>%
+  ungroup()
+
+print(df_last_year)
+
+```
+
+```{r}
+# Configuração da annotation (fonte)
+fonte_annotation <- list(
+  text = "Fonte: International Monetary Fund|DataMapper",
+  x = 1,
+  y = 0,
+  xref = "paper",
+  yref = "paper",
+  xanchor = "right",
+  yanchor = "bottom",
+  showarrow = FALSE,
+  font = list(size = 10, color = "gray")
+)
+
+# 1) Gráfico: General government gross debt
+g1_grossdebt <- plot_ly(
+  data = df_fiscal,
+  x = ~year,
+  y = ~`General government gross debt`,
+  color = ~country,
+  colors = cores_padrao,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2, shape = "spline", smoothing = 0.7), # Adiciona suavização
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Dívida Bruta: %{y:.1f}% do PIB<extra></extra>",
+  text = ~country
+) %>%
+  layout(
+    title = "Dívida Bruta do Governo Geral por país | % PIB | 2015–2024",
+    xaxis = list(title = "Ano", dtick = 1),
+    yaxis = list(title = "% do PIB"),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 2) Gráfico: General government net lending/borrowing
+g2_netlborrow <- plot_ly(
+  data = df_fiscal,
+  x = ~year,
+  y = ~`General government net lending/borrowing`,
+  color = ~country,
+  colors = cores_padrao,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2, shape = "spline", smoothing = 0.7), # Adiciona suavização
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Net Lending/Borrowing: %{y:.1f}% do PIB<extra></extra>",
+  text = ~country
+) %>%
+  layout(
+    title = "Empréstimos Líquidos/Dívida do Governo Geral por país | % PIB | 2015–2024",
+    xaxis = list(title = "Ano", dtick = 1),
+    yaxis = list(title = "% do PIB"),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 3) Gráfico: Revenue
+g3_revenue <- plot_ly(
+  data = df_fiscal,
+  x = ~year,
+  y = ~Revenue,
+  color = ~country,
+  colors = cores_padrao,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2, shape = "spline", smoothing = 0.7), # Adiciona suavização
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Revenue: %{y:.1f}% do PIB<extra></extra>",
+  text = ~country
+) %>%
+  layout(
+    title = "Receita total por País | % do PIB | 2015–2024",
+    xaxis = list(title = "Ano", dtick = 1),
+    yaxis = list(title = "% do PIB"),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 4) Gráfico: Expenditure
+g4_expend <- plot_ly(
+  data = df_fiscal,
+  x = ~year,
+  y = ~Expenditure,
+  color = ~country,
+  colors = cores_padrao,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2, shape = "spline", smoothing = 0.7), # Adiciona suavização
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Expenditure: %{y:.1f}% do PIB<extra></extra>",
+  text = ~country
+) %>%
+  layout(
+    title = "Despesas totais| % do PIB | 2015–2024",
+    xaxis = list(title = "Ano", dtick = 1),
+    yaxis = list(title = "% do PIB"),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+
+# 4) Gráfico: Despesas
+g4_expendX <- plot_ly(
+  data = df_fiscal,
+  x = ~year,
+  y = ~Expenditure,
+  color = ~country,
+  colors = cores_padrao,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2, shape = "spline", smoothing = 0.7), # Adiciona suavização
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Expenditure: %{y:.1f}% do PIB<extra></extra>",
+  text = ~country
+) %>%
+  layout(
+    title = "Despesas totais | % do PIB | 2015–2024",
+    xaxis = list(title = "Ano", dtick = 1, titlefont = list(size = 14), tickfont = list(size = 14)), # Aumenta tamanho dos eixos
+    yaxis = list(title = "% do PIB", titlefont = list(size = 14), tickfont = list(size = 14)), # Aumenta tamanho dos eixos
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+??ploty
+
+# Exibe os gráficos interativos
+g1_grossdebt
+g2_netlborrow
+g3_revenue
+g4_expend
+g4_expendX
+
+```
+
+3
+
+```{r}
+# Instala e carrega o plotly
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+library(plotly)
+
+# Configuração da annotation (fonte)
+fonte_annotation <- list(
+  text      = "Fonte: International Monetary Fund | DataMapper",
+  x         = 1,
+  y         = 0,
+  xref      = "paper",
+  yref      = "paper",
+  xanchor   = "right",
+  yanchor   = "bottom",
+  showarrow = FALSE,
+  font      = list(size = 10, color = "gray")
+)
+
+# 1) Gráfico: Dívida Bruta do Governo Geral
+g1_grossdebt <- plot_ly(
+  data    = df_fiscal,
+  x       = ~year,
+  y       = ~`General government gross debt`,
+  color   = ~country,
+  colors  = cores_padrao,
+  type    = "scatter",
+  mode    = "lines",
+  line    = list(width = 2, shape = "spline", smoothing = 0.7),
+  text    = ~country,
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Dívida Bruta: %{y:.1f}% do PIB<extra></extra>"
+) %>%
+  plotly::layout(
+    title      = "Dívida Bruta do Governo Geral por país | % PIB | 2015–2024",
+    xaxis      = list(title = "Ano", dtick = 1,
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    yaxis      = list(title = "% do PIB",
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 2) Gráfico: Empréstimos Líquidos/Dívida do Governo Geral
+g2_netlborrow <- plot_ly(
+  data    = df_fiscal,
+  x       = ~year,
+  y       = ~`General government net lending/borrowing`,
+  color   = ~country,
+  colors  = cores_padrao,
+  type    = "scatter",
+  mode    = "lines",
+  line    = list(width = 2, shape = "spline", smoothing = 0.7),
+  text    = ~country,
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Net Lending/Borrowing: %{y:.1f}% do PIB<extra></extra>"
+) %>%
+  plotly::layout(
+    title      = "Empréstimos Líquidos/Dívida do Governo Geral por país | % PIB | 2015–2024",
+    xaxis      = list(title = "Ano", dtick = 1,
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    yaxis      = list(title = "% do PIB",
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 3) Gráfico: Receita
+g3_revenue <- plot_ly(
+  data    = df_fiscal,
+  x       = ~year,
+  y       = ~Revenue,
+  color   = ~country,
+  colors  = cores_padrao,
+  type    = "scatter",
+  mode    = "lines",
+  line    = list(width = 2, shape = "spline", smoothing = 0.7),
+  text    = ~country,
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Revenue: %{y:.1f}% do PIB<extra></extra>"
+) %>%
+  plotly::layout(
+    title      = "Receita total por País | % do PIB | 2015–2024",
+    xaxis      = list(title = "Ano", dtick = 1,
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    yaxis      = list(title = "% do PIB",
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# 4) Gráfico: Despesas
+g4_expend <- plot_ly(
+  data    = df_fiscal,
+  x       = ~year,
+  y       = ~Expenditure,
+  color   = ~country,
+  colors  = cores_padrao,
+  type    = "scatter",
+  mode    = "lines",
+  line    = list(width = 2, shape = "spline", smoothing = 0.7),
+  text    = ~country,
+  hovertemplate = "<b>%{text}</b><br>Ano: %{x}<br>Expenditure: %{y:.1f}% do PIB<extra></extra>"
+) %>%
+  plotly::layout(
+    title      = "Despesas totais | % do PIB | 2015–2024",
+    xaxis      = list(title = "Ano", dtick = 1,
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    yaxis      = list(title = "% do PIB",
+                      titlefont = list(size = 14),
+                      tickfont  = list(size = 14)),
+    showlegend = TRUE,
+    annotations = list(fonte_annotation)
+  )
+
+# Exibe os gráficos
+g1_grossdebt
+g2_netlborrow
+g3_revenue
+g4_expend
+
+```
+
+Qualidade do Gasto Público
+
+```{r}
+# Instalação e carregamento do pacote wbstats
+if (!require("wbstats")) install.packages("wbstats")
+library(wbstats)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Atualizar cache de dados do Banco Mundial
+wb_cache_new <- wb_cache()
+
+# Definindo os grupos de países
+brasil <- c("BR")
+
+america_latina <- c("AR", "BR", "BO", "CL", "CO", "CR", "DO", "EC", "SV", 
+                    "GT", "HN", "MX", "NI", "PY", "PE")
+
+brics <- c("BR", "RU", "IN", "CN", "ZA")
+
+paises_desenvolvidos <- c("AU", "FR", "DE", "GB", "US", "NZ")
+
+paises_nordicos <- c("SE", "DK", "NO")
+
+# Combinando todos os países em uma lista única
+todos_paises <- unique(c(brasil, america_latina, brics, paises_desenvolvidos, paises_nordicos))
+
+# Anos para análise (baseado no relatório, usaremos 2014-2022)
+anos <- 2014:2022
+
+# Buscando os indicadores correspondentes a cada dimensão
+# Vamos primeiro pesquisar os indicadores disponíveis
+
+#-----
+# Pesquisar o indicador pelo ID
+indicador <- wb_search("HH.DHS.GAR.456")
+
+# Mostrar a descrição do indicador
+indicador$indicator_desc
+
+#-----
+
+# EDUCAÇÃO
+# Taxa de alfabetização entre jovens
+alfabetizacao_indicadores <- wb_search("1.1_YOUTH.LITERACY.RATE")
+# Desempenho em matemática no PISA - pode não estar diretamente disponível no Banco Mundial
+pisa_indicadores <- wb_search("LO.PISA.MAT")
+# Taxa de graduações não atrasadas
+graduacao_indicadores <- wb_search("SE.TER.CMPL.ZS")
+
+# SAÚDE
+# Expectativa de vida
+expectativa_vida_indicadores <- wb_search("SP.DYN.LE00.IN")
+
+# Taxa de mortalidade neonatal
+mortalidade_neonatal_indicadores <- wb_search("SH.DYN.NMRT")
+
+# ADMINISTRAÇÃO
+# Índice de controle de corrupção
+corrupcao_indicadores <- wb_search("CC.EST")
+# Índice de qualidade do sistema judiciário
+judicial_indicadores <- wb_search("ENF.CONT.COEN.QUJP.XD")
+# Quantidade de processos para abrir um negócio
+burocracia_indicadores <- wb_search("IC.BUS.EASE.DFRN.DB16")
+
+# EQUIDADE
+# Porcentagem da renda pertencente aos 40% mais pobres
+equidade_indicadores <- wb_search("income poverty")
+
+# INFRAESTRUTURA/SEGURANÇA
+# Porcentagem da população com acesso à eletricidade
+eletricidade_indicadores <- wb_search("access to electricity")
+# Homicídios intencionais
+homicidio_indicadores <- wb_search("intentional homicides")
+
+# Após análise das pesquisas, vamos definir os indicadores específicos
+# Este é um exemplo de como poderia ser, os códigos exatos precisariam ser confirmados
+indicadores_educacao <- c(
+  "alfabetizacao" = "SE.ADT.LITR.ZS",  # Taxa de alfabetização, total de adultos (% de pessoas com 15+)
+  "pisa" = "SE.PRM.MATH.ZS",  # Nota média em matemática (PISA) - código precisa ser verificado
+  "graduacao" = "SE.SEC.CMPT.LO.ZS"  # Taxa de conclusão do ensino secundário - verificar código
+)
+
+indicadores_saude <- c(
+  "expectativa_vida" = "SP.DYN.LE00.IN",  # Expectativa de vida ao nascer, total (anos)
+  "mortalidade_neonatal" = "SH.DYN.NMRT"  # Taxa de mortalidade neonatal (por 1.000 nascidos vivos)
+)
+
+indicadores_administracao <- c(
+  "corrupcao" = "CC.EST",  # Estimativa de controle da corrupção
+  "judicial" = "GE.EST",   # Eficácia do governo (proxy para qualidade judicial)
+  "burocracia" = "IC.REG.PROC"  # Procedimentos para registrar um negócio (número)
+)
+
+indicadores_equidade <- c(
+  "renda_40_mais_pobres" = "SI.DST.FRST.40"  # Participação na renda detida pelos 40% mais pobres
+)
+
+indicadores_infraestrutura <- c(
+  "eletricidade" = "EG.ELC.ACCS.ZS",  # Acesso à eletricidade (% da população)
+  "homicidios" = "VC.IHR.PSRC.P5"  # Homicídios intencionais (por 100.000 pessoas)
+)
+
+# Combinando todos os indicadores
+todos_indicadores <- c(
+  indicadores_educacao,
+  indicadores_saude,
+  indicadores_administracao,
+  indicadores_equidade,
+  indicadores_infraestrutura
+)
+
+# Baixando os dados
+dados_brutos <- wb_data(
+  indicators = todos_indicadores,
+  country = todos_paises,
+  start_date = min(anos),
+  end_date = max(anos),
+  return_wide = TRUE
+)
+
+# Função para padronizar indicadores (valores maiores são melhores)
+padronizar_indicadores <- function(df) {
+  # Indicadores onde valores menores são melhores (inverter)
+  indicadores_inverter <- c("mortalidade_neonatal", "burocracia", "homicidios")
+  
+  for (ind in indicadores_inverter) {
+    if (ind %in% colnames(df)) {
+      df[[ind]] <- 1 / df[[ind]]
+    }
+  }
+  
+  return(df)
+}
+
+# Padronizar os dados
+dados_padronizados <- padronizar_indicadores(dados_brutos)
+
+# Calcular a média de cada indicador para padronização
+medias_indicadores <- dados_padronizados %>%
+  summarise(across(all_of(names(todos_indicadores)), mean, na.rm = TRUE))
+
+# Padronizar cada indicador pela média
+dados_normalizados <- dados_padronizados %>%
+  mutate(across(all_of(names(todos_indicadores)), 
+                ~./as.numeric(medias_indicadores[1, cur_column()]), 
+                .names = "{.col}_norm"))
+
+# Função para classificar países nos grupos
+classificar_grupos <- function(iso2c) {
+  case_when(
+    iso2c %in% brasil ~ "Brasil",
+    iso2c %in% america_latina ~ "Latam",
+    iso2c %in% brics ~ "BRICS",
+    iso2c %in% paises_desenvolvidos ~ "DMs",
+    iso2c %in% paises_nordicos ~ "Nordicos",
+    TRUE ~ "Outros"
+  )
+}
+
+# Adicionar classificação de grupo
+dados_normalizados <- dados_normalizados %>%
+  mutate(grupo = classificar_grupos(iso2c))
+
+# Calcular indicadores por dimensão
+dados_dimensoes <- dados_normalizados %>%
+  mutate(
+    educacao = rowMeans(select(., ends_with("_norm") & 
+                                 starts_with(c("alfabetizacao", "pisa", "graduacao"))), na.rm = TRUE),
+    saude = rowMeans(select(., ends_with("_norm") & 
+                              starts_with(c("expectativa_vida", "mortalidade_neonatal"))), na.rm = TRUE),
+    administracao = rowMeans(select(., ends_with("_norm") & 
+                                     starts_with(c("corrupcao", "judicial", "burocracia"))), na.rm = TRUE),
+    equidade = rowMeans(select(., ends_with("_norm") & 
+                                 starts_with("renda_40_mais_pobres")), na.rm = TRUE),
+    infraestrutura = rowMeans(select(., ends_with("_norm") & 
+                                       starts_with(c("eletricidade", "homicidios"))), na.rm = TRUE)
+  )
+
+# Calcular índice geral de qualidade dos bens públicos (média das dimensões)
+dados_dimensoes <- dados_dimensoes %>%
+  mutate(qualidade_bens_publicos = (educacao + saude + administracao + equidade + infraestrutura) / 5)
+
+# Obter dados de gasto público como % do PIB
+# Note que precisamos verificar o código correto para este indicador
+gasto_publico_indicador <- "GC.XPN.TOTL.GD.ZS"  # Despesa total do governo (% do PIB)
+
+gasto_publico <- wb_data(
+  indicators = c("gasto_publico" = gasto_publico_indicador),
+  country = todos_paises,
+  start_date = min(anos),
+  end_date = max(anos),
+  return_wide = TRUE
+)
+
+# Juntar os dados de gasto público com os indicadores calculados
+dados_completos <- left_join(dados_dimensoes, gasto_publico, by = c("iso2c", "iso3c", "country", "date"))
+
+# Calcular a eficiência do gasto público
+dados_completos <- dados_completos %>%
+  mutate(eficiencia_gasto = qualidade_bens_publicos / gasto_publico)
+
+# Calcular as médias por grupo e ano
+dados_grupo_ano <- dados_completos %>%
+  group_by(grupo, date) %>%
+  summarise(
+    educacao = mean(educacao, na.rm = TRUE),
+    saude = mean(saude, na.rm = TRUE),
+    administracao = mean(administracao, na.rm = TRUE),
+    equidade = mean(equidade, na.rm = TRUE),
+    infraestrutura = mean(infraestrutura, na.rm = TRUE),
+    qualidade_bens_publicos = mean(qualidade_bens_publicos, na.rm = TRUE),
+    eficiencia_gasto = mean(eficiencia_gasto, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Criar gráficos semelhantes aos do relatório
+# Gráfico da qualidade da educação
+ggplot(dados_grupo_ano, aes(x = date, y = educacao, color = grupo, group = grupo)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Qualidade da Educação",
+       x = "Ano",
+       y = "Índice (média = 1)",
+       color = "Grupo") +
+  theme_minimal() +
+  scale_color_manual(values = c("Brasil" = "darkgreen", "Latam" = "red", 
+                               "BRICS" = "blue", "DMs" = "purple", 
+                               "Nordicos" = "orange"))
+
+# Gráfico da qualidade da saúde
+ggplot(dados_grupo_ano, aes(x = date, y = saude, color = grupo, group = grupo)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Qualidade da Saúde",
+       x = "Ano",
+       y = "Índice (média = 1)",
+       color = "Grupo") +
+  theme_minimal() +
+  scale_color_manual(values = c("Brasil" = "darkgreen", "Latam" = "red", 
+                               "BRICS" = "blue", "DMs" = "purple", 
+                               "Nordicos" = "orange"))
+
+# Gráfico da eficiência do gasto público
+ggplot(dados_grupo_ano, aes(x = date, y = eficiencia_gasto, color = grupo, group = grupo)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Eficiência do Gasto Público",
+       x = "Ano",
+       y = "Índice (média = 1)",
+       color = "Grupo") +
+  theme_minimal() +
+  scale_color_manual(values = c("Brasil" = "darkgreen", "Latam" = "red", 
+                               "BRICS" = "blue", "DMs" = "purple", 
+                               "Nordicos" = "orange"))
+
+```
+
+. . . \# 📂 Backup
+
+How to use GMD:
+
+```{r}
+# Load the Package
+      library(globalmacrodata)
+
+      # Get preview data
+      df <- gmd()
+
+      # Get data from latest available version
+      df <- gmd(show_preview = FALSE)
+
+      # Get data from a specific version
+      df <- gmd(version = "2025_01")
+
+      # Get data for a specific country
+      df <- gmd(country = "USA")
+
+      # Get data for multiple countries
+      df <- gmd(country = c("USA", "CHN", "DEU"))
+
+      # Get specific variables
+      df <- gmd(variables = c("rGDP", "infl", "unemp"))
+
+      # Combine parameters
+      df <- gmd(version = "2025_01", country = c("USA", "CHN"), variables = c("rGDP", "unemp", "CPI"))
+```
+
+BRA vs LATAM
+
+```{r}
+# Load the Package
+      library(globalmacrodata)
+
+      # Get preview data
+      dfview <- gmd(country = "BRA")
+
+      # Get data for a specific country
+      bdLATAM <- gmd(country = c("BRA","ARG","PER","CHL","URY","PRY","COL","GUY"),variables = c("govdebt_GDP","govdef_GDP","govtax_GDP"))
+```
+
+Filtrar NA
+
+```{r}
+# Filtra os dados para o período de 2000 a 2022
+bdLATAM <- bdLATAM %>% filter(year >= 2000, year <= 2024)
+
+# 2. Identificar as variáveis de interesse
+variaveis <- c("govdebt_GDP", "govdef_GDP", "govtax_GDP")
+
+# 3. Para cada variável: encontrar o período comum
+bdLATAM_comum <- bdLATAM
+
+for (var in variaveis) {
+  # a) Criar um df temporário com as colunas relevantes
+  temp_df <- bdLATAM_comum %>%
+    select(countryname, year, !!sym(var)) %>%  # Usa !!sym para avaliar o nome da variável
+    filter(!is.na(!!sym(var))) # Remove NA da variável
+
+  # b) Encontrar o período comum para a variável atual
+  periodo_comum <- temp_df %>%
+    group_by(countryname) %>%
+    summarise(
+      min_ano = min(year),
+      max_ano = max(year),
+      .groups = "drop"
+    )
+
+  # c) Filtrar o bd original para o período comum da variável
+  bdLATAM_comum <- bdLATAM_comum %>%
+    inner_join(periodo_comum, by = "countryname") %>%
+    filter(year >= min_ano, year <= max_ano) %>%
+    select(-min_ano, -max_ano) # Remove colunas auxiliares
+}
+
+```
+
+Pre-visualization
+
+```{r}
+bdLATAM <- bdLATAM %>% filter(year >= 2000, year <= 2024)
+
+# 2. Identificar as variáveis de interesse
+variaveis <- c("govdebt_GDP", "govdef_GDP", "govtax_GDP")
+
+# 3. Cria os gráficos
+library(ggplot2)
+library(dplyr)
+
+# Supondo que você já tenha o dataframe bdLATAM carregado e filtrado
+
+# 2. Identificar as variáveis de interesse
+variaveis <- c("govdebt_GDP", "govdef_GDP", "govtax_GDP")
+
+# 3. Cria os gráficos
+for (var in variaveis) {
+  p <- ggplot(bdLATAM, aes(x = year, y = !!sym(var), color = countryname)) +
+    geom_line() +
+    labs(title = paste("Evolução de", var, "por País"),
+         x = "Ano",
+         y = var,
+         color = "País") +
+    theme_bw() # Adiciona um tema mais limpo
+  print(p)
+}
+
+#-------------------------------------------------------------------------------------------------------
+
+library(ggplot2)
+library(dplyr)
+
+# Supondo que você já tenha o dataframe bdLATAM carregado e filtrado
+
+# 2. Identificar as variáveis de interesse
+variaveis <- c("govdebt_GDP", "govdef_GDP", "govtax_GDP")
+
+# 3. Cria os gráficos
+for (var in variaveis) {
+  p <- ggplot(bdLATAM, aes(x = year, y = !!sym(var), color = countryname)) +
+    geom_line(aes(size = ifelse(countryname == "Brazil", 1.0, 0.5))) + # Define a espessura da linha
+    labs(title = paste("Evolução de", var, "por País"),
+         x = "Ano",
+         y = var) +  # Remove a legenda do título
+    theme_bw() + # Adiciona um tema mais limpo
+    scale_color_manual(
+      values = c("Brazil" = "black", # Define a cor do Brasil como preto
+                 "Argentina" = "#002C5E", "Peru" = "#FEB712", "Chile" = "#FEB999",
+                 "Uruguay" = "#46B1E1", "Paraguay" = "grey", "Colombia" = "#46B1B1", "Guyana" = "#009C5E") # Define as cores dos outros países como cinza
+    ) +
+    scale_size_continuous(range = c(0.5, 1.0), guide = "none") + # Ajusta o tamanho da linha e remove a legenda do tamanho
+    guides(color = "none") # Remove a legenda de cores
+  print(p)
+}
+
+
+# 3. Cria os gráficos
+for (var in variaveis) {
+  p <- ggplot(bdLATAM, aes(x = year, y = !!sym(var), color = countryname)) +
+    geom_line(aes(size = ifelse(countryname == "Brazil", 1.0, 0.5))) + # Define a espessura da linha
+    labs(title = paste("Evolução de", var, "por País"),
+         x = "Ano",
+         y = var) +  # Remove a legenda do título
+    theme_bw() + # Adiciona um tema mais limpo
+    scale_color_manual(
+      values = c("Brazil" = "black", # Define a cor do Brasil como preto
+                 "Argentina" = "#002C5E", "Peru" = "#FEB712", "Chile" = "#FEB999",
+                 "Uruguay" = "#46B1E1", "Paraguay" = "grey", "Colombia" = "#46B1B1", "Guyana" = "#009C5E") # Define as cores dos outros países como cinza
+    ) +
+    scale_size_continuous(range = c(0.5, 1.0), guide = "none")+ # Ajusta o tamanho da linha e remove a legenda do tamanho
+    guides(
+      color = guide_legend(override.aes = list(size = 2))) # Remove a legenda de cores - REMOVA ou COMENTE esta linha
+  print(p)
+}
+
+
+# for (var in variaveis) {
+#   p <- ggplot(bdLATAM, aes(x = year, y = !!sym(var), color = countryname)) +
+#     geom_line(aes(size = ifelse(countryname == "Brazil", 1.0, 0.5))) + # Define a espessura da linha
+#     labs(title = paste("Evolução de", var, "por País"),
+#          x = "Ano",
+#          y = var) +  # Remove a legenda do título
+#     theme_bw() + # Adiciona um tema mais limpo
+#     scale_color_manual(
+#       values = c("Brazil" = "black", # Define a cor do Brasil como preto
+#                  "Argentina" = "#002C5E", "Peru" = "#FEB712", "Chile" = "#FEB999",
+#                  "Uruguay" = "#46B1E1", "Paraguay" = "grey", "Colombia" = "#46B1B1", "Guyana" = "#009C5E") # Define as cores dos outros países como cinza
+#     ) +
+#     scale_size_continuous(range = c(0.5, 1.0), guide = "none")+ # Ajusta o tamanho da linha e remove a legenda do tamanho
+#     guides(
+#       color = guide_legend(override.aes = list(size = 2)))+ # Remove a legenda de cores - REMOVA ou COMENTE esta linha
+#     scale_y_continuous(breaks = seq(min(bdLATAM[[var]], na.rm = TRUE), max(bdLATAM[[var]], na.rm = TRUE), by = 10)) + # Define os intervalos do eixo y
+#   print(p)
+# }
+# 
+
+```
